@@ -1,0 +1,4 @@
+# for manual testing only
+python-decouple
+pytest==6.2.5
+pre-commit~=3.5.0

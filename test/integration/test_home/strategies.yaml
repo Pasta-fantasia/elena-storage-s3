@@ -1,0 +1,26 @@
+Strategies:
+  - id: TelegramNotificationTest-1
+    name: TelegramNotificationTest
+    enabled: true
+    strategy_class: test.elena.domain.services.test_telegram.TelegramNotificationTest
+    bots:
+      - id: TelegramNotificationTest_BTC_USDT
+        name: TelegramNotificationTest 1 on BTC/USDT
+        enabled: true
+        pair: BTC/USDT
+        exchange: binance
+        time_frame: 1d # Valid values: 1m, 1h, 1d, 1M, 1y
+        cron_expression: "* * * * *" # At every minute
+        tags:
+          - ranging
+          - bear
+
+
+Tags:
+  - id: bear
+    enabled: true
+  - id: bull
+    enabled: true
+  - id: ranging
+    enabled: true
+
