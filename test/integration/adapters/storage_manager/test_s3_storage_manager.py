@@ -1,20 +1,26 @@
+import json
 import pathlib
 from os import path
-from unittest.mock import Mock, call
+from unittest.mock import Mock, call, patch
 
-import pandas as pd
 import pytest
 from elena.adapters.config.local_config_manager import LocalConfigManager
+from elena.domain.model.bot_budget import BotBudget
 from elena.domain.model.bot_status import BotStatus
 from elena.domain.model.order import Order, OrderSide, OrderType
 from elena.domain.model.trading_pair import TradingPair
 from elena.domain.ports.storage_manager import StorageError
 from elena.shared.dynamic_loading import get_instance
-from pandas import DataFrame
 
 bot_status = BotStatus(
     bot_id="test_bot_id",
     timestamp=1703944135288,
+    budget=BotBudget(
+        set_limit=1000.0,
+        current_limit=999.0,
+        used=77.0,
+        pct_reinvest_profit=10.0,
+    ),
     active_orders=[
         Order(
             id="3448098",
@@ -65,47 +71,6 @@ bot_status = BotStatus(
     ],
     active_trades=[],
     closed_trades=[],
-)
-
-data_frame = DataFrame(
-    {
-        "Name": {
-            0: "Person_1",
-            1: "Person_2",
-            2: "Person_3",
-            3: "Person_4",
-            4: "Person_5",
-            5: "Person_6",
-            6: "Person_7",
-            7: "Person_8",
-            8: "Person_9",
-            9: "Person_10",
-        },
-        "Age": {
-            0: 56,
-            1: 46,
-            2: 32,
-            3: 25,
-            4: 38,
-            5: 56,
-            6: 36,
-            7: 40,
-            8: 28,
-            9: 28,
-        },
-        "City": {
-            0: "City_A",
-            1: "City_B",
-            2: "City_C",
-            3: "City_A",
-            4: "City_B",
-            5: "City_C",
-            6: "City_A",
-            7: "City_B",
-            8: "City_C",
-            9: "City_A",
-        },
-    }
 )
 
 
@@ -160,36 +125,47 @@ def test_save_and_delete_bot_status(storage_manager):
                                      "The specified key does not exist.")
 
 
-def test_save_and_load_data_frame(logger, storage_manager):
-    storage_manager.save_data_frame("test_df_id", data_frame)
+def test_append_metric(storage_manager):
+    try:
+        storage_manager._delete_file('Metric/test_append_metric_bot/240119.jsonl')
+    except StorageError:
+        pass
 
-    actual = storage_manager.load_data_frame("test_df_id")
+    with patch("elena.adapters.storage_manager.file_storage_manager.time") as mocked_datetime:
+        mocked_datetime.time.return_value = 1705685253
+        mocked_datetime.strftime.return_value = "240119"
+        storage_manager.append_metric(
+            bot_id="test_append_metric_bot",
+            metric_name="OrderCancelled",
+            metric_type="counter",
+            value=1,
+            tags=["tag1:abc", "tag2:def"],
+        )
+        storage_manager.append_metric(
+            bot_id="test_append_metric_bot",
+            metric_name="OrderCancelled",
+            metric_type="gauge",
+            value=11,
+            tags=["tag1:abc", "tag2:def"],
+        )
 
-    pd.testing.assert_frame_equal(actual, data_frame)
-    assert logger.mock_calls == [
-        call.info('Started S3 storage manager, working with bucket %s', 'elena.dev.p3.b0a5dc0528d6'),
-        call.debug('Loading %s %s from storage: %s', 'DataFrame', 'test_df_id', 'DataFrame/test_df_id.json'),
-        call.debug('Saving %s %s to storage: %s', 'DataFrame', 'test_df_id', 'DataFrame/test_df_id.json'),
-        call.debug('Loading %s %s from storage: %s', 'DataFrame', 'test_df_id', 'DataFrame/test_df_id.json'),
-    ]
+    actual = storage_manager._load_file('Metric/test_append_metric_bot/240119.jsonl')
 
-
-def test_load_un_existing_data_frame(storage_manager):
-    with pytest.raises(StorageError) as excinfo:
-        storage_manager.load_data_frame("fake_test_df_id")
-
-    assert excinfo.value.args[0] == ("Error loading DataFrame fake_test_df_id: "
-                                     "An error occurred (NoSuchKey) when calling the GetObject operation: "
-                                     "The specified key does not exist.")
-
-
-def test_save_and_delete_data_frame(storage_manager):
-    storage_manager.save_data_frame("test_df_id", data_frame)
-    storage_manager.delete_data_frame("test_df_id")
-
-    with pytest.raises(StorageError) as excinfo:
-        storage_manager.load_data_frame("test_df_id")
-
-    assert excinfo.value.args[0] == ("Error loading DataFrame test_df_id: "
-                                     "An error occurred (NoSuchKey) when calling the GetObject operation: "
-                                     "The specified key does not exist.")
+    lines = actual.splitlines()
+    assert len(lines) == 2
+    assert json.loads(lines[0]) == {
+        "timestamp": 1705685253000,
+        "bot_id": "test_append_metric_bot",
+        "metric_name": "OrderCancelled",
+        "metric_type": "counter",
+        "value": 1,
+        "tags": "tag1:abc#tag2:def",
+    }
+    assert json.loads(lines[1]) == {
+        "timestamp": 1705685253000,
+        "bot_id": "test_append_metric_bot",
+        "metric_name": "OrderCancelled",
+        "metric_type": "gauge",
+        "value": 11,
+        "tags": "tag1:abc#tag2:def",
+    }

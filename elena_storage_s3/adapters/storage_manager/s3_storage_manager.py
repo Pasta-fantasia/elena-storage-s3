@@ -3,7 +3,6 @@ from typing import Any, Dict, Optional
 import boto3
 from elena.adapters.storage_manager.file_storage_manager import FileStorageManager
 from elena.domain.ports.logger import Logger
-import boto3
 from elena.domain.ports.storage_manager import StorageError
 
 
@@ -29,8 +28,8 @@ class S3StorageManager(FileStorageManager):
                 return
         raise StorageError(f'Bucket {self._bucket_name} not found')
 
-    def _get_filepath(self, data_id: str, class_name: str) -> str:
-        return f"{class_name}/{data_id}.json"
+    def _get_filepath(self, file_path: str, file_name: str, extension: str = "json") -> str:
+        return f"{file_path}/{file_name}.{extension}"
 
     def _load_file(self, filepath: str) -> str:
         obj = self._s3.Object(self._bucket_name, filepath)
@@ -44,3 +43,12 @@ class S3StorageManager(FileStorageManager):
     def _delete_file(self, filepath: str):
         obj = self._s3.Object(self._bucket_name, filepath)
         obj.delete()
+
+    def _append_to_file(self, filepath: str, json_data: str):
+        obj = self._s3.Object(self._bucket_name, filepath)
+        try:
+            file_content = obj.get()['Body'].read().decode('UTF-8')
+        except Exception as err:
+            file_content = ""
+        file_content += json_data + "\n"
+        obj.put(Body=file_content.encode('UTF-8'))
